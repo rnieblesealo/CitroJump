@@ -6,7 +6,10 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     var playerXScale: CGFloat = 1 // We will flip this value so we need to cache the original one
     
     let platform = SKSpriteNode(color: UIColor(cgColor: CGColor(gray: 1, alpha: 1)), size: CGSize(width: 10000, height: 10)) // Temporary invis. platform to test jumping
-    
+   
+    let jumpSound = SKAudioNode(fileNamed: "jump.wav")
+    let landSound = SKAudioNode(fileNamed: "land.wav")
+
     let motionManager = CMMotionManager()
     let xTiltSensitivity: CGFloat = 500
     let yTiltSensitivity: CGFloat = 0
@@ -18,10 +21,20 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             motionManager.startAccelerometerUpdates()
         }
     }
-   
+  
+    func configureSounds(){
+        // Make sure sounds don't loop
+        jumpSound.autoplayLooped = false;
+        landSound.autoplayLooped = false;
+        
+        // Add sound nodes to scene
+        addChild(jumpSound)
+        addChild(landSound)
+    }
+    
     func configurePlayer(){
         // Scale player to reasonable size
-        player.setScale(8.0)
+        player.setScale(5.0)
         
         // Cache applied x scale
         playerXScale = player.xScale;
@@ -85,20 +98,21 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         self.physicsWorld.contactDelegate = self // Make contact tests take place in this scene
         self.physicsWorld.gravity = CGVector(dx: 0, dy: -9.81) // Remove global gravity
     }
-    
+  
     func jump(){
-        print("jumping!")
-        
         guard let physicsBody = player.physicsBody else {return}
         
         physicsBody.velocity = CGVector.zero
-        physicsBody.applyImpulse(CGVector(dx: 0, dy: 1000))
+        physicsBody.applyImpulse(CGVector(dx: 0, dy: 400)) // 400 dy is perfect!
+        
+        jumpSound.run(SKAction.play())
     }
     
     // Run when moving to scene
     override func didMove(to view: SKView) {
         configureMotion()
-        configureScenePhysics()
+        configureSounds()
+        configureScenePhysics() // Physics environment only, not individual physics bodies!
         configurePlayer()
         configurePlatforms()
     }
@@ -136,6 +150,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }()
         
         // Run collision logic here :)
+        
+        landSound.run(SKAction.play())
+        
         jump()
     }
 
