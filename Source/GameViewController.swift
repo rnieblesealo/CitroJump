@@ -22,8 +22,8 @@ class GameViewController: UIViewController {
         skView.presentScene(scene)
         
         // Optionally show node count and frames
-        skView.showsNodeCount = true;
-        skView.showsFPS = true;
-        skView.showsPhysics = true;
+        skView.showsNodeCount = false;
+        skView.showsFPS = false;
+        skView.showsPhysics = false;
     }
 }

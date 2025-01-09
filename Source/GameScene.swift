@@ -5,7 +5,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     let player = SKSpriteNode(imageNamed: "citronaut_0")
     var playerXScale: CGFloat = 1 // We will flip this value so we need to cache the original one
     
-    let platform = SKSpriteNode(color: UIColor(cgColor: CGColor(gray: 1, alpha: 1)), size: CGSize(width: 10000, height: 10)) // Temporary invis. platform to test jumping
+    var platformSpawnBase: Int = 0 // Spawn plats between (platformSpawnBase, platformSpawnBase + view.height)
+    var platforms = Array<SKSpriteNode>()
   
     let cam = SKCameraNode()
     
@@ -15,11 +16,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     let motionManager = CMMotionManager()
     let xTiltSensitivity: CGFloat = 500
     let yTiltSensitivity: CGFloat = 0
-  
+ 
     func configureCamera(){
         // Bind camera node to scene
         self.camera = cam
         self.addChild(cam) // MARK: Why does it make sense to child it?
+     
+        // Initially center over player
+        cam.position.x = player.position.x
     }
     
     func configureMotion(){
@@ -42,7 +46,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     
     func configurePlayer(){
         // Scale player to reasonable size
-        player.setScale(5.0)
+        player.setScale(3.0)
         
         // Cache applied x scale
         playerXScale = player.xScale;
@@ -71,37 +75,23 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         player.run(SKAction.repeatForever(walkAnimation))
         
         // Setup player physics body
-        let physicsBody = SKPhysicsBody(rectangleOf: CGSize(width: player.frame.width, height: player.frame.height))
+        let playerBody = SKPhysicsBody(rectangleOf: CGSize(width: player.frame.width, height: player.frame.height))
         
-        physicsBody.isDynamic = true // Apply updates
-        physicsBody.usesPreciseCollisionDetection = true;
-        physicsBody.contactTestBitMask = 2 // Collide w/platform
-        physicsBody.categoryBitMask = 1 // TODO: Add some layer of organization to this
-        physicsBody.linearDamping = 0
+        playerBody.isDynamic = true// Apply updates
+        playerBody.allowsRotation = false;
+        playerBody.usesPreciseCollisionDetection = true;
+        playerBody.contactTestBitMask = 2 // Collide w/platform
+        playerBody.categoryBitMask = 1 // TODO: Add some layer of organization to this
+        playerBody.linearDamping = 0
 
-        player.physicsBody = physicsBody
-            
+        player.physicsBody = playerBody
+           
         // Add player to scene
         self.addChild(player)
+        
+        print("PLAYER BOUNDS: \(player.frame.size)")
     }
- 
-    func configurePlatforms(){
-        // MARK: Temporary, test platform for player; idea is to have many
-        
-        platform.position = CGPoint(x: frame.midX, y: frame.minY + 50) // Place platform just offscreen
-      
-        let platformBody = SKPhysicsBody(rectangleOf: platform.size)
-        
-        platformBody.isDynamic = false // Apply physics updates
-        platformBody.affectedByGravity = false
-        platformBody.contactTestBitMask = 1 // Collide w/player
-        platformBody.categoryBitMask = 2 // TODO: Add some layer of organization to this
-        
-        platform.physicsBody = platformBody
-        
-        self.addChild(platform)
-    }
-    
+
     func configureScenePhysics(){
         self.physicsWorld.contactDelegate = self // Make contact tests take place in this scene
         self.physicsWorld.gravity = CGVector(dx: 0, dy: -9.81) // Remove global gravity
@@ -111,34 +101,77 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         guard let physicsBody = player.physicsBody else {return}
         
         physicsBody.velocity = CGVector.zero
-        physicsBody.applyImpulse(CGVector(dx: 0, dy: 400)) // 400 dy is perfect!
+        physicsBody.applyImpulse(CGVector(dx: 0, dy: 100)) // 400 dy is perfect!
         
         jumpSound.run(SKAction.play())
+        landSound.run(SKAction.play())
+    }
+  
+    func disablePlayerCollision(){
+        guard let playerBody = player.physicsBody else {return}
+        
+        playerBody.collisionBitMask = 0
     }
    
+    func enablePlayerCollision(){
+        guard let playerBody = player.physicsBody else {return}
+        
+        playerBody.collisionBitMask = 2
+    }
+    
     func createPlatform(at position: CGPoint) -> SKSpriteNode {
-        // Platforms should all have same width, height
-        let platformWidth = player.size.width + (1/2 * player.size.width) // Player's width + 1/4 that width on both sides (so add 1/2 width of player)
-        let platformHeight = player.size.height * (1/10) // Tenth of player's height
+        let platformTexture = SKTexture(imageNamed: "platform")
+        
+        platformTexture.filteringMode = .nearest
+        
+        let platform = SKSpriteNode(texture: platformTexture)
+        
+        platform.setScale(3.0)
+   
+        platform.position = position // Place platform just offscreen
+     
+        // Physics setup
+        let platformBody = SKPhysicsBody(rectangleOf: platform.size)
+       
+        platformBody.isDynamic = false // Don't physics updates (contacts will still be reported)
+        platformBody.affectedByGravity = false // No gravity
+        platformBody.contactTestBitMask = 1 // Collide w/player
+        platformBody.categoryBitMask = 2 // TODO: Add some layer of organization to this
+        
+        platform.physicsBody = platformBody
+      
+        self.addChild(platform)
 
-        let platform = SKSpriteNode(
-            color: UIColor(cgColor: CGColor(gray: 1, alpha: 1)),
-            size: CGSize(width: platformWidth, height: platformHeight)
-        )
-        
-        // Leave normal anchorpoint (center)
-        
         return platform
+    }
+  
+    func generatePlatforms(beginAt yMin: Int, endAt yMax: Int){
+        guard let view = self.view else {return}
+       
+        let platformToPlatformYOffset = 65
+        
+        for yPos in stride(from: yMin + platformToPlatformYOffset, to: yMax, by: platformToPlatformYOffset) {
+            // Get random x pos
+            let xPos = Int.random(in: Int(view.bounds.minX)...Int(view.bounds.maxX))
+           
+            // Make platform!
+            platforms.append(createPlatform(at: CGPoint(x: xPos, y: yPos)))
+        }
     }
     
     // Run when moving to scene
     override func didMove(to view: SKView) {
-        configureCamera()
+        self.backgroundColor = UIColor(cgColor: CGColor(red: 25 / 255, green: 138 / 255, blue: 255/255, alpha: 1))
+        
         configureMotion()
         configureSounds()
         configureScenePhysics() // Physics environment only, not individual physics bodies!
         configurePlayer()
-        configurePlatforms()
+        configureCamera()
+
+        // MARK: Test platform generation
+        platformSpawnBase = Int(view.bounds.minY)
+        generatePlatforms(beginAt: platformSpawnBase, endAt: platformSpawnBase + Int(view.bounds.height))
     }
     
     func isBodyOf(_ target: SKSpriteNode, _ body: SKPhysicsBody) -> Bool {
@@ -164,37 +197,46 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             return
         }
 
-        // Track the other body
-        var otherBody = {
-            if (playerIsBodyA){
-                return bodyB;
-            } else {
-                return bodyA;
-            }
-        }()
-        
-        // Run collision logic here :)
-        
-        landSound.run(SKAction.play())
-        
-        jump()
+        // Track the player body and the other body
+        var playerBody: SKPhysicsBody
+        var otherBody: SKPhysicsBody
+       
+        if (playerIsBodyA){
+            playerBody = bodyA;
+            otherBody = bodyB
+        } else {
+            playerBody = bodyA;
+            otherBody = bodyB;
+        }
+      
+        if (playerBody.velocity.dy <= 0){
+            jump()
+        }
     }
 
     // Run every frame
     override func update(_ currentTime: TimeInterval) {
-        // Keep cam on player
-        
         // Ensure camera moves up only if the player has passed its current position (doodle jump effect!)
         if player.position.y > cam.position.y {
             cam.position.y = player.position.y
         }
-      
-        // Start with 2 contiguous screen heights
-        // Everytime the player passes a screen height worth of level, instantiate 1 more screen height
-        // Instantiate platforms within this screen height
+     
+        // Spawn platforms and update spawn base when crossed
+        if view != nil && Int(player.position.y + view!.bounds.height) >=  platformSpawnBase {
+            generatePlatforms(beginAt: platformSpawnBase, endAt: platformSpawnBase + Int(view!.bounds.height))
+            platformSpawnBase += Int(view!.bounds.height)
+        }
         
-        // Apply tilt to player body
         if let playerBody = player.physicsBody {
+            // Phase through all platforms unless falling down
+            if playerBody.velocity.dy > -5000 { // I have no fucking clue why using fucking -5000 instead of 0 works, but here it is!
+                disablePlayerCollision()
+            } else {
+                enablePlayerCollision()
+            }
+            
+            // Apply tilt to player body
+
             // Get accelerometer data
             guard let accelerometerData = motionManager.accelerometerData else {return} // "guard let" is like "if-let" but fail logic goes in block
            
