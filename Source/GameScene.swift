@@ -19,36 +19,62 @@ class SceneGKState: GKState {
 class Title: SceneGKState {
     // Called when entering state
     override func didEnter(from previousState: GKState?) {
-        scene!.shouldAutogeneratePlatforms = false
+        scene!.shouldAutogeneratePlatforms = false // No platform spawns
+    
+        // Reset cam position
         scene!.camShouldTrackPlayer = false
-       
+        scene!.cam.position = CGPoint.zero
+      
+        // Make a cute little platform for the player to stand on
         let titlePlatformPos = scene!.relative2ViewPos(relativePos: CGPoint(x: 0.5, y: 0.1))
         let titlePlatform = scene!.createPlatform(at: titlePlatformPos)
 
+        // Position the player onto it
         scene!.positionSpriteNodeRelatively(node: scene!.player, relativePos: CGPoint(x: 0.5, y: 0))
         scene!.player.position.y = titlePlatform.frame.maxY
 
-        scene!.cam.position.y = scene!.player.position.y + 120 // TODO: Figure out how to make this camera placement relative
-        
-        scene!.titleLabel?.isHidden = false
+        // Prevent player from responding to movement inputs
         scene!.playerShouldFlip = false
-        
         scene!.player.physicsBody?.isDynamic = false
-        
+
+        // Move the camera slightly up to make space for the title
+        scene!.cam.position.y = scene!.player.position.y + 120 // TODO: Figure out how to make this camera placement relative
+       
+        // Show title label
+        scene!.titleLabel?.isHidden = false
     }
    
     // Called when transitioning to next state
     override func willExit(to nextState: GKState) {
         
     }
+    
+    override func isValidNextState(_ stateClass: AnyClass) -> Bool {
+        // Can only move ingame from title
+        return super.isValidNextState(stateClass) && stateClass == InGame.self
+    }
 }
 
 class InGame: SceneGKState {
+    override func didEnter(from previousState: GKState?) {
+        
+    }
     
+    override func isValidNextState(_ stateClass: AnyClass) -> Bool {
+        // Can either lose (game over) or quit to title
+        return super.isValidNextState(stateClass) && (stateClass == GameOver.self || stateClass == Title.self)
+    }
 }
 
 class GameOver: SceneGKState {
+    override func didEnter(from previousState: GKState?){
+        
+    }
     
+    override func isValidNextState(_ stateClass: AnyClass) -> Bool {
+        // Can only go back to title after losing (might want to add some retry functionality)
+        return super.isValidNextState(stateClass) && stateClass == Title.self
+    }
 }
 
 class GameScene: SKScene, SKPhysicsContactDelegate {
