@@ -9,22 +9,37 @@ class SceneGKState: GKState {
     init(scene: GameScene){
         self.scene = scene
     }
+   
+    // Used (by ourselves and the state machine) to verify validity of transition
+    override func isValidNextState(_ stateClass: AnyClass) -> Bool {
+        return self.scene != nil; // Need a scene to move states; changing state entirely changes in-scene stuff!
+    }
 }
 
 class Title: SceneGKState {
     // Called when entering state
     override func didEnter(from previousState: GKState?) {
+        scene!.shouldAutogeneratePlatforms = false
+        scene!.camShouldTrackPlayer = false
+       
+        let titlePlatformPos = scene!.relative2ViewPos(relativePos: CGPoint(x: 0.5, y: 0.1))
+        let titlePlatform = scene!.createPlatform(at: titlePlatformPos)
+
+        scene!.positionSpriteNodeRelatively(node: scene!.player, relativePos: CGPoint(x: 0.5, y: 0))
+        scene!.player.position.y = titlePlatform.frame.maxY
+
+        scene!.cam.position.y = scene!.player.position.y + 120 // TODO: Figure out how to make this camera placement relative
+        
+        scene!.titleLabel?.isHidden = false
+        scene!.playerShouldFlip = false
+        
+        scene!.player.physicsBody?.isDynamic = false
         
     }
    
     // Called when transitioning to next state
     override func willExit(to nextState: GKState) {
-    
-    }
-   
-    // Used (by ourselves and the state machine) to verify validity of transition
-    override func isValidNextState(_ stateClass: AnyClass) -> Bool {
-        return true;
+        
     }
 }
 
@@ -39,6 +54,7 @@ class GameOver: SceneGKState {
 class GameScene: SKScene, SKPhysicsContactDelegate {
     let player = SKSpriteNode(imageNamed: "citronaut_0")
     var playerXScale: CGFloat = 1 // We will flip this value so we need to cache the original one
+    var playerShouldFlip = true
    
     var titleLabel: SKSpriteNode?
     
@@ -48,8 +64,10 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     var platformSpawnBase: Int = 0 // Spawn plats between (platformSpawnBase, platformSpawnBase + view.height)
     var platforms = Array<SKSpriteNode>()
+    var shouldAutogeneratePlatforms = true
   
     let cam = SKCameraNode()
+    var camShouldTrackPlayer = true
     
     let jumpSound = SKAudioNode(fileNamed: "jump.wav")
     let landSound = SKAudioNode(fileNamed: "land.wav")
@@ -57,7 +75,20 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     let motionManager = CMMotionManager()
     let xTiltSensitivity: CGFloat = 500
     let yTiltSensitivity: CGFloat = 0
- 
+
+    var stateMachine: GKStateMachine?
+    
+    func configureStateMachine(){
+        self.stateMachine = GKStateMachine(states: [
+            Title(scene: self),
+            InGame(scene: self),
+            GameOver(scene: self)
+        ])
+       
+        // Enter first state by default
+        stateMachine!.enter(Title.self) // Note: .self explicitly returns the type of the given type
+    }
+    
     func configureCamera(){
         // Bind camera node to scene
         self.camera = cam
@@ -82,6 +113,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             
         if let view = self.view {
             // View runs from -height to +height, calculate rel. pos using this fact
+            // MARK: Not the case for positioning sprite nodes not childed to camera... Oh god why
             let minX = -view.frame.width / 2
             let minY = -view.frame.height / 2
            
@@ -101,10 +133,10 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     func configureScene(){
         let guiScale = 6.0
        
-        titleLabel = createStaticSpriteNode(imageName: "title", relativePos: CGPoint(x: 0.5, y: 0.6), scale: guiScale)
+        titleLabel = createStaticSpriteNode(imageName: "title", relativePos: CGPoint(x: 0.5, y: 0.65), scale: guiScale)
         
-        titleLabel!.isHidden = true
-
+        titleLabel!.zPosition = 999 // Make sure title is above anything else
+        
         let bgScale = 3.0
         let bgAnchorPoint = CGPoint(x: 0.5, y: 0)
         
@@ -152,6 +184,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
         // Set pos
         player.position = CGPoint(x: frame.midX, y: frame.midY) // Middle of screen
+        
+        player.anchorPoint = CGPoint(x: 0.5, y: 0) // Midbottom
 
         // Load walk textures
         let walkTextures: [SKTexture] = [
@@ -222,7 +256,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         platformTexture.filteringMode = .nearest
         
         let platform = SKSpriteNode(texture: platformTexture)
-        
+       
         platform.setScale(3.0)
    
         platform.position = position // Place platform just offscreen
@@ -255,21 +289,56 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             platforms.append(createPlatform(at: CGPoint(x: xPos, y: yPos)))
         }
     }
+ 
+    /// Returns a given relative pos in view coordinates
+    func relative2ViewPos(relativePos: CGPoint) -> CGPoint {
+        guard let view = self.view else {return CGPoint(x: 0, y: 0)}
+        
+        return CGPoint(
+            x: view.frame.minX + view.frame.width * relativePos.x,
+            y: view.frame.minY + view.frame.height * relativePos.y
+        )
+    }
     
+    func positionSpriteNodeRelatively(node: SKSpriteNode, relativePos: CGPoint, anchorPoint: CGPoint? = nil){
+        guard let view = self.view else {return}
+     
+        if (node.parent != scene){
+            print("[WARNING] Relatively positioning sprite node not childed to scene itself will NOT work correctly!")
+        }
+        
+        let originalAnchorPoint = node.anchorPoint
+        
+        // Use temp anchor point if specified
+        if let tempAnchorPoint = anchorPoint {
+            node.anchorPoint = tempAnchorPoint
+        }
+        
+        // View runs from -height to +height, calculate rel. pos using this fact
+        let minX = view.frame.minX
+        let minY = view.frame.minY
+       
+        node.position = CGPoint(
+            x: minX + relativePos.x * view.frame.width,
+            y: minY + relativePos.y * view.frame.height
+        )
+       
+        // Revert to original anchor point
+        node.anchorPoint = originalAnchorPoint
+    }
+
     // Run when moving to scene
     override func didMove(to view: SKView) {
         self.backgroundColor = UIColor(cgColor: CGColor(red: 25 / 255, green: 138 / 255, blue: 255/255, alpha: 1))
-        
+       
         configureMotion()
         configureSounds()
         configureScenePhysics() // Physics environment only, not individual physics bodies!
         configurePlayer()
         configureCamera()
         configureScene()
-
-        // MARK: Test platform generation
-        platformSpawnBase = Int(view.bounds.minY)
-        generatePlatforms(beginAt: platformSpawnBase, endAt: platformSpawnBase + Int(view.bounds.height))
+        configureStateMachine()
+        
     }
     
     func isBodyOf(_ target: SKSpriteNode, _ body: SKPhysicsBody) -> Bool {
@@ -315,13 +384,16 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     // Run every frame
     override func update(_ currentTime: TimeInterval) {
         // Ensure camera moves up only if the player has passed its current position (doodle jump effect!)
-        if player.position.y > cam.position.y {
+        if camShouldTrackPlayer,
+           player.position.y > cam.position.y {
             cam.position.y = player.position.y
         }
         
         // Spawn platforms and update spawn base when crossed
-        if view != nil && Int(player.position.y + view!.bounds.height) >=  platformSpawnBase {
-            generatePlatforms(beginAt: platformSpawnBase, endAt: platformSpawnBase + Int(view!.bounds.height))
+        if view != nil && Int(player.position.y + view!.bounds.height) >= platformSpawnBase {
+            if shouldAutogeneratePlatforms {
+                generatePlatforms(beginAt: platformSpawnBase, endAt: platformSpawnBase + Int(view!.bounds.height))
+            }
             platformSpawnBase += Int(view!.bounds.height)
         }
         
@@ -340,15 +412,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
            
             // Get acceleration from it
             let xTilt = accelerometerData.acceleration.x
-            let yTilt = accelerometerData.acceleration.y // Have spiky platforms on bottom we must tilt DOWN from!!!
             
             let dx = xTilt * xTiltSensitivity
-            let dy = yTilt * yTiltSensitivity
             
             playerBody.velocity.dx = dx
          
             // Flip if going the other way, MARK: restructure code so accel. data is independent...
-            if (dx < 0){
+            if playerShouldFlip,
+               dx < 0 {
                 player.xScale = -playerXScale
             } else {
                 player.xScale = playerXScale
