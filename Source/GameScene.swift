@@ -1,10 +1,50 @@
 import SpriteKit
+import GameplayKit
 import CoreMotion
+
+/// GKState with reference to scene
+class SceneGKState: GKState {
+    weak var scene: GameScene?
+    
+    init(scene: GameScene){
+        self.scene = scene
+    }
+}
+
+class Title: SceneGKState {
+    // Called when entering state
+    override func didEnter(from previousState: GKState?) {
+        
+    }
+   
+    // Called when transitioning to next state
+    override func willExit(to nextState: GKState) {
+    
+    }
+   
+    // Used (by ourselves and the state machine) to verify validity of transition
+    override func isValidNextState(_ stateClass: AnyClass) -> Bool {
+        return true;
+    }
+}
+
+class InGame: SceneGKState {
+    
+}
+
+class GameOver: SceneGKState {
+    
+}
 
 class GameScene: SKScene, SKPhysicsContactDelegate {
     let player = SKSpriteNode(imageNamed: "citronaut_0")
     var playerXScale: CGFloat = 1 // We will flip this value so we need to cache the original one
+   
+    var titleLabel: SKSpriteNode?
     
+    var bgSand: SKSpriteNode?
+    var bgOcean: SKSpriteNode?
+
     var platformSpawnBase: Int = 0 // Spawn plats between (platformSpawnBase, platformSpawnBase + view.height)
     var platforms = Array<SKSpriteNode>()
   
@@ -20,10 +60,85 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     func configureCamera(){
         // Bind camera node to scene
         self.camera = cam
-        self.addChild(cam) // MARK: Why does it make sense to child it?
+        addChild(cam) // MARK: Why does it make sense to child it?
      
         // Initially center over player
         cam.position.x = player.position.x
+    }
+   
+    func configureScene(){
+        // GUI/title label
+        let titleLabelTexture = SKTexture(imageNamed: "title")
+        
+        titleLabelTexture.filteringMode = .nearest
+        
+        titleLabel = SKSpriteNode(texture: titleLabelTexture)
+  
+        cam.addChild(titleLabel!)
+
+        let scale = 6.0
+        
+        titleLabel!.setScale(scale)
+        
+        if let view = self.view {
+            let relativeYPos = 0.75 // Relative positioning using % like CSS to ensure consistency
+            
+            titleLabel!.position = CGPoint(x: 0, y: view.frame.height * relativeYPos)
+            
+            // Ignore influence scale on position calculations
+            titleLabel!.position.x /= scale
+            titleLabel!.position.y /= scale
+        }
+        
+        titleLabel!.zPosition = 999 // Ensure is always above everything else
+        
+        // Background
+        let bgScale = 3.0
+       
+        // ---
+        
+        let sandTexture = SKTexture(imageNamed: "sand")
+        
+        sandTexture.filteringMode = .nearest;
+    
+        bgSand = SKSpriteNode(texture: sandTexture)
+      
+        cam.addChild(bgSand!)
+       
+        bgSand!.anchorPoint = CGPoint(x: 0.5, y: 1) // Mid top
+        bgSand!.setScale(bgScale)
+     
+        if let view = self.view {
+            let sandRelYPos = 0.1
+          
+            bgSand!.position = CGPoint(x: 0, y: view.frame.height * sandRelYPos)
+            
+            bgSand!.position.x /= bgScale
+            bgSand!.position.y /= bgScale
+        }
+        
+        
+        // ---
+        
+        let oceanTexture = SKTexture(imageNamed: "ocean")
+
+        oceanTexture.filteringMode = .nearest;
+       
+        bgOcean = SKSpriteNode(texture: oceanTexture)
+        
+        cam.addChild(bgOcean!)
+        
+        bgOcean!.anchorPoint = CGPoint(x: 0.5, y: 0)
+        bgOcean!.setScale(bgScale)
+       
+        if let view = self.view {
+            let oceanRelYPos = 0.1
+            
+            bgOcean!.position = CGPoint(x: 0, y: view.frame.height * oceanRelYPos)
+            
+            bgOcean!.position.x /= bgScale
+            bgOcean!.position.y /= bgScale
+        }
     }
     
     func configureMotion(){
@@ -87,9 +202,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         player.physicsBody = playerBody
            
         // Add player to scene
-        self.addChild(player)
-        
-        print("PLAYER BOUNDS: \(player.frame.size)")
+        addChild(player)
     }
 
     func configureScenePhysics(){
@@ -140,7 +253,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         
         platform.physicsBody = platformBody
       
-        self.addChild(platform)
+        addChild(platform)
 
         return platform
     }
@@ -162,12 +275,12 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     // Run when moving to scene
     override func didMove(to view: SKView) {
         self.backgroundColor = UIColor(cgColor: CGColor(red: 25 / 255, green: 138 / 255, blue: 255/255, alpha: 1))
-        
         configureMotion()
         configureSounds()
         configureScenePhysics() // Physics environment only, not individual physics bodies!
         configurePlayer()
         configureCamera()
+        configureScene()
 
         // MARK: Test platform generation
         platformSpawnBase = Int(view.bounds.minY)
@@ -220,7 +333,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         if player.position.y > cam.position.y {
             cam.position.y = player.position.y
         }
-     
+        
         // Spawn platforms and update spawn base when crossed
         if view != nil && Int(player.position.y + view!.bounds.height) >=  platformSpawnBase {
             generatePlatforms(beginAt: platformSpawnBase, endAt: platformSpawnBase + Int(view!.bounds.height))
