@@ -44,6 +44,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     
     var bgSand: SKSpriteNode?
     var bgOcean: SKSpriteNode?
+    var bgClouds = Array<SKSpriteNode>()
 
     var platformSpawnBase: Int = 0 // Spawn plats between (platformSpawnBase, platformSpawnBase + view.height)
     var platforms = Array<SKSpriteNode>()
@@ -65,79 +66,62 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         // Initially center over player
         cam.position.x = player.position.x
     }
-   
-    func configureScene(){
-        // GUI/title label
-        let titleLabelTexture = SKTexture(imageNamed: "title")
-        
-        titleLabelTexture.filteringMode = .nearest
-        
-        titleLabel = SKSpriteNode(texture: titleLabelTexture)
   
-        cam.addChild(titleLabel!)
-
-        let scale = 6.0
+    func createStaticSpriteNode(imageName: String, relativePos: CGPoint, scale: CGFloat, anchorPoint: CGPoint = CGPoint(x: 0.5, y: 0.5)) -> SKSpriteNode {
+        let texture = SKTexture(imageNamed: imageName)
         
-        titleLabel!.setScale(scale)
+        texture.filteringMode = .nearest
         
-        if let view = self.view {
-            let relativeYPos = 0.75 // Relative positioning using % like CSS to ensure consistency
-            
-            titleLabel!.position = CGPoint(x: 0, y: view.frame.height * relativeYPos)
-            
-            // Ignore influence scale on position calculations
-            titleLabel!.position.x /= scale
-            titleLabel!.position.y /= scale
-        }
+        let node = SKSpriteNode(texture: texture)
         
-        titleLabel!.zPosition = 999 // Ensure is always above everything else
-        
-        // Background
-        let bgScale = 3.0
+        node.anchorPoint = anchorPoint
        
-        // ---
-        
-        let sandTexture = SKTexture(imageNamed: "sand")
-        
-        sandTexture.filteringMode = .nearest;
+        cam.addChild(node)
     
-        bgSand = SKSpriteNode(texture: sandTexture)
-      
-        cam.addChild(bgSand!)
-       
-        bgSand!.anchorPoint = CGPoint(x: 0.5, y: 1) // Mid top
-        bgSand!.setScale(bgScale)
-     
-        if let view = self.view {
-            let sandRelYPos = 0.1
-          
-            bgSand!.position = CGPoint(x: 0, y: view.frame.height * sandRelYPos)
+        node.setScale(scale)
             
-            bgSand!.position.x /= bgScale
-            bgSand!.position.y /= bgScale
+        if let view = self.view {
+            // View runs from -height to +height, calculate rel. pos using this fact
+            let minX = -view.frame.width / 2
+            let minY = -view.frame.height / 2
+           
+            node.position = CGPoint(
+                x: minX + relativePos.x * view.frame.width,
+                y: minY + relativePos.y * view.frame.height
+            )
+     
+            // Why no need to div by scale?
         }
         
+        node.zPosition = -999 // Ensure is always above
         
-        // ---
+        return node
+    }
+    
+    func configureScene(){
+        let guiScale = 6.0
+       
+        titleLabel = createStaticSpriteNode(imageName: "title", relativePos: CGPoint(x: 0.5, y: 0.6), scale: guiScale)
         
-        let oceanTexture = SKTexture(imageNamed: "ocean")
+        titleLabel!.isHidden = true
 
-        oceanTexture.filteringMode = .nearest;
-       
-        bgOcean = SKSpriteNode(texture: oceanTexture)
+        let bgScale = 3.0
+        let bgAnchorPoint = CGPoint(x: 0.5, y: 0)
         
-        cam.addChild(bgOcean!)
-        
-        bgOcean!.anchorPoint = CGPoint(x: 0.5, y: 0)
-        bgOcean!.setScale(bgScale)
+        bgOcean = createStaticSpriteNode(imageName: "ocean", relativePos: CGPoint(x: 0.5, y: 0.01), scale: bgScale, anchorPoint: bgAnchorPoint)
+        bgSand = createStaticSpriteNode(imageName: "sand", relativePos: CGPoint(x: 0.5, y: -0.1), scale: bgScale, anchorPoint: bgAnchorPoint)
        
-        if let view = self.view {
-            let oceanRelYPos = 0.1
-            
-            bgOcean!.position = CGPoint(x: 0, y: view.frame.height * oceanRelYPos)
-            
-            bgOcean!.position.x /= bgScale
-            bgOcean!.position.y /= bgScale
+        // Manual rel. pos for all clouds
+        let cloudPositions: [CGPoint] = [
+            CGPoint(x: 0.6, y: 0.7),
+            CGPoint(x: 0.9, y: 0.95),
+            CGPoint(x: 0.15, y: 0.50),
+            CGPoint(x: 0.06, y: 0.8),
+            CGPoint(x: 0.85, y: 0.38),
+        ]
+        
+        for pos in cloudPositions {
+            bgClouds.append(createStaticSpriteNode(imageName: "cloud", relativePos: CGPoint(x: pos.x, y: pos.y), scale: bgScale))
         }
     }
     
@@ -275,6 +259,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     // Run when moving to scene
     override func didMove(to view: SKView) {
         self.backgroundColor = UIColor(cgColor: CGColor(red: 25 / 255, green: 138 / 255, blue: 255/255, alpha: 1))
+        
         configureMotion()
         configureSounds()
         configureScenePhysics() // Physics environment only, not individual physics bodies!
